@@ -665,7 +665,8 @@ def make_app(hub, index_path='index.html'):
     app.router.add_get('/health', health)
     app.router.add_get('/', index)
     return app
-         if __name__ == '__main__':
+         
+if __name__ == '__main__':
     from aiohttp import web
 
     token = os.environ.get('BOT_TOKEN')
