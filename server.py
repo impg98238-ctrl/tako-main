@@ -673,13 +673,24 @@ if __name__ == '__main__':
     if not token:
         raise RuntimeError('BOT_TOKEN is not set')
 
-    hub = Hub(token)
-    hub.start()
+    async def main():
+        hub = Hub(token)
 
-    app = make_app(hub)
+        for room in (hub.rocket, *hub.hockey.values()):
+            asyncio.create_task(room.run())
 
-    web.run_app(
-        app,
-        host='0.0.0.0',
-        port=int(os.environ.get('PORT', 10000))
-    )
+        app = make_app(hub)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+
+        site = web.TCPSite(
+            runner,
+            '0.0.0.0',
+            int(os.environ.get('PORT', 10000))
+        )
+        await site.start()
+
+        await asyncio.Event().wait()
+
+    asyncio.run(main())
