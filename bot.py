@@ -26,8 +26,8 @@ from aiohttp import web
 
 import server
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-WEBAPP_URL = os.environ["WEBAPP_URL"]
+BOT_TOKEN = os.environ["8961639808:AAFm9Zcei2UtcQs9hNK7Uia7qtTyv1uDALQ"]
+WEBAPP_URL = os.environ["https://tako-main-9.onrender.com/"]
 WS_URL = os.environ.get("WS_URL", "")
 PORT = int(os.environ.get("PORT", "8080"))
 
