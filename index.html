@@ -49,6 +49,9 @@ h1{margin:0;font:700 19px/1.1 'Unbounded',system-ui,sans-serif;white-space:nowra
 .panel h3{margin:0 0 10px;font:700 16px/1.2 'Unbounded',system-ui,sans-serif}
 .mut{color:var(--mut)}
 .small{font-size:13px}
+.note{margin:10px 0 0;text-align:center;color:var(--mut);font-size:12.5px}
+.netb{margin-left:8px;font:600 12px 'Onest',system-ui,sans-serif;color:var(--mut)}
+.netb.on{color:#A6D854}
 .primary{width:100%;border:0;border-radius:16px;padding:15px;font-weight:700;font-size:17px;color:#1A0E07;background:var(--grad)}
 .primary:disabled{opacity:.45;cursor:default}
 .primary.alt{background:var(--s2);color:var(--cream);border:1px solid var(--line)}
@@ -220,7 +223,7 @@ h1{margin:0;font:700 19px/1.1 'Unbounded',system-ui,sans-serif;white-space:nowra
         <b>Хоккей</b>
       </button>
     </div>
-    <p class="legal">Тако виртуальные. Их нельзя купить, обменять на деньги или вывести. Соперники в играх — боты.</p>
+    <p class="legal">Тако виртуальные: их нельзя купить, обменять на деньги или вывести. С выигрыша удерживается комиссия 20%, она сгорает. Кроме живых игроков в играх участвуют боты.</p>
   </section>
 
   <!-- Ракетка -->
@@ -233,7 +236,7 @@ h1{margin:0;font:700 19px/1.1 'Unbounded',system-ui,sans-serif;white-space:nowra
     </div>
     <div class="hist" id="rhist" aria-label="Последние раунды"></div>
     <div class="panel" id="rbet"></div>
-    <div class="panel"><h3>Участники</h3><ul class="list" id="rplayers"></ul></div>
+    <div class="panel"><h3>Участники<span class="netb"></span></h3><ul class="list" id="rplayers"></ul></div>
   </section>
 
   <!-- Хоккей -->
@@ -252,7 +255,7 @@ h1{margin:0;font:700 19px/1.1 'Unbounded',system-ui,sans-serif;white-space:nowra
       <button type="button" data-team="B">Гуакамоле</button>
     </div>
     <div class="panel" id="hbet"></div>
-    <div class="panel"><h3>Участники</h3><ul class="list" id="hplayers"></ul></div>
+    <div class="panel"><h3>Участники<span class="netb"></span></h3><ul class="list" id="hplayers"></ul></div>
   </section>
 
   <!-- Лидеры -->
@@ -260,7 +263,7 @@ h1{margin:0;font:700 19px/1.1 'Unbounded',system-ui,sans-serif;white-space:nowra
     <div class="panel" style="margin-top:0">
       <h3>Топ по выигранным тако</h3>
       <ul class="list" id="lead"></ul>
-      <p class="mut small" style="margin:10px 0 0">Таблица демонстрационная: остальные игроки — боты.</p>
+      <p class="mut small" style="margin:10px 0 0" id="leadnote">Таблица демонстрационная: остальные игроки — боты.</p>
     </div>
   </section>
 
@@ -311,7 +314,7 @@ h1{margin:0;font:700 19px/1.1 'Unbounded',system-ui,sans-serif;white-space:nowra
     <button class="x" id="wclose" type="button" aria-label="Закрыть">×</button>
     <h3 id="wt">Кошелёк</h3>
     <div class="bigbal"><span class="tk">🌮</span><span id="wbal">0</span></div>
-    <p class="mut small" style="margin:0">Тако только для игры. Их нельзя купить, обменять на деньги или вывести.</p>
+    <p class="mut small" style="margin:0">Тако только для игры. Их нельзя купить, обменять на деньги или вывести. С выигрыша удерживается комиссия 20%, она сгорает.</p>
     <button class="primary" id="wbonus" type="button">Забрать бонус</button>
     <button class="primary alt" id="wreset" type="button">Начать заново с 1000 🌮</button>
   </div>
@@ -332,6 +335,8 @@ const rint = (a, b) => Math.floor(rnd(a, b + 1));
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = rint(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const TAU = Math.PI * 2;
 const T = '🌮';
+const FEE = 0.2;   // комиссия с выигрыша (с прибыли), сгорает
+const feeOn = (gross, stake) => Math.max(0, Math.floor((gross - stake) * FEE));
 
 /* фон из тако */
 (function () {
@@ -425,7 +430,8 @@ function betPanel(extra, mainId) {
   return `<p class="lbl">Ставка</p>
   <div class="amt"><span class="tk">${T}</span><input class="bet-input" inputmode="numeric" aria-label="Размер ставки" value="${bet}"></div>
   <div class="quick"><button type="button" data-q="-10">−10</button><button type="button" data-q="+50">+50</button><button type="button" data-q="max">MAX</button></div>
-  ${extra}<button class="primary" id="${mainId}" type="button"></button>`;
+  ${extra}<button class="primary" id="${mainId}" type="button"></button>
+  <p class="note">С выигрыша удерживается комиссия ${FEE * 100}%</p>`;
 }
 $('#rbet').innerHTML = betPanel(`<div class="auto"><label for="autoAt">Автовывод</label><div class="ai"><input id="autoAt" type="number" step="0.1" min="1.1" value="2.0" aria-label="Множитель автовывода"><button class="sw" id="autoSw" type="button" role="switch" aria-checked="false" aria-label="Автовывод"></button></div></div>`, 'rMain');
 $('#hbet').innerHTML = betPanel('', 'hMain');
@@ -445,6 +451,122 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => { if (e.target.classList.contains('bet-input')) { clampBet(); renderBalance(); refreshBtns(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList.contains('bet-input')) e.target.blur(); });
 
+/* ================= сеть: мультиплеер ================= */
+const params = new URLSearchParams(location.search);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const NET = {on: false, ws: null, uid: null, tries: 0, count: 0, bonus: null, noRetry: false};
+const guestId = (() => { let g = ''; safe(() => { g = localStorage.getItem('arcade:guest'); if (!g) { g = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('arcade:guest', g); } }); return g || 'x' + Math.random().toString(36).slice(2); })();
+function netUrl() {
+  const p = params.get('ws'); if (p) return p;
+  return /^https?:$/.test(location.protocol) ? (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws' : '';
+}
+function netSend(o) { if (NET.ws && NET.ws.readyState === 1) NET.ws.send(JSON.stringify(o)); }
+function netBadge() {
+  $$('.netb').forEach(el => { el.textContent = NET.on ? '● онлайн' + (NET.count ? ' · ' + NET.count : '') : 'без сети · боты'; el.classList.toggle('on', NET.on); });
+}
+function netConnect() {
+  const url = netUrl(); if (!url || NET.ws || NET.noRetry) return;
+  let ws; try { ws = new WebSocket(url); } catch (e) { return; }
+  NET.ws = ws;
+  const to = setTimeout(() => { if (!NET.on) safe(() => ws.close()); }, 4000);
+  ws.onopen = () => ws.send(JSON.stringify({t: 'hello', init: (tg && tg.initData) || '', guest: guestId, name: myName}));
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } netMsg(m); };
+  ws.onclose = () => {
+    clearTimeout(to); const was = NET.on; NET.on = false; NET.ws = null; netBadge();
+    if (was) netLost();
+    if (!NET.noRetry) setTimeout(netConnect, Math.min(15000, 2000 * ++NET.tries));
+  };
+  ws.onerror = () => {};
+}
+function netLost() {
+  toast('Связь потеряна. Играем с ботами');
+  if (view === 'rocket') { stopRocket(); startRocket(); }
+  else if (view === 'hockey') { stopHockey(); startHockey(); }
+  renderBonus();
+}
+function applyMe(m) {
+  Object.assign(S, {balance: m.balance, games: m.games, wins: m.wins, best: m.best, totalWon: m.totalWon, since: m.since, ach: m.ach || {}});
+  NET.bonus = m.bonus; save(); renderBalance(); renderBonus(); refreshBtns();
+  if (view === 'profile') renderProfile();
+}
+function netMsg(m) {
+  switch (m.t) {
+    case 'me': {
+      const first = !NET.on;
+      if (first) { if (view === 'rocket') stopRocket(); else if (view === 'hockey') stopHockey(); }
+      NET.on = true; NET.uid = m.uid; NET.tries = 0; applyMe(m);
+      if (first) { netBadge(); if (view === 'rocket') startRocket(); else if (view === 'hockey') startHockey(); }
+      break;
+    }
+    case 'r_state': netRocket(m); break;
+    case 'r_tick': if (R.run && R.net && R.phase === 'fly') R.t0 = performance.now() - Math.log(m.m) / 0.12 * 1000; break;
+    case 'h_state': netHockey(m); break;
+    case 'leaders': renderLeadersNet(m.rows); break;
+    case 'ach': toast('Достижение: ' + (ACH[m.key] ? ACH[m.key][0] : m.key)); break;
+    case 'msg': toast(m.text); break;
+    case 'err': if (m.code === 'auth') NET.noRetry = true; toast(m.text || 'Ошибка'); break;
+  }
+}
+function netRocket(m) {
+  if (!R.run || !R.net) return;
+  const now = performance.now(), prev = R.phase, pm = R.me && R.me.state;
+  R.phase = m.phase; R.synced = true;
+  if (!R.skinSet || m.skin !== R.skin) { R.skin = m.skin; R.skinSet = true; applySkin(); }
+  R.hist = m.hist; renderRHist();
+  const mine = m.players.find(p => p.uid === NET.uid);
+  R.me = mine || null; R.bots = m.players.filter(p => p.uid !== NET.uid);
+  const q = m.next.find(p => p.uid === NET.uid); R.next = q ? {stake: q.stake, state: 'queued'} : null;
+  if (m.phase === 'wait') {
+    R.deadline = now + m.in;
+    if (prev !== 'wait') { R.pts = []; R.puffs = []; R.mult = 1; multN.textContent = '1.00'; multEl.classList.remove('crashed'); }
+  } else if (m.phase === 'fly') { R.t0 = now - m.el; rstatus.textContent = ''; }
+  else { R.cp = m.cp; R.mult = m.cp; if (prev !== 'crash') crashFX(); }
+  if (mine && pm === 'active' && mine.state === 'cashed') { hap.ok(); toast('+' + fmt(mine.payout) + ' ' + T + (mine.fee ? ' (комиссия −' + fmt(mine.fee) + ')' : '')); }
+  else if (mine && pm === 'active' && mine.state === 'lost') hap.err();
+  else if (m.phase === 'crash' && prev !== 'crash') hap.hit();
+  NET.count = m.n; netBadge(); renderRPlayers(); refreshBtns();
+}
+function netRocketTick(now) {
+  if (!R.synced) { rstatus.textContent = 'Подключаемся…'; return; }
+  if (R.phase === 'wait') rstatus.textContent = 'До старта ' + Math.max(0, Math.ceil((R.deadline - now) / 1000));
+  else if (R.phase === 'fly') {
+    R.mult = Math.exp(0.12 * (now - R.t0) / 1000); multN.textContent = R.mult.toFixed(2);
+    if (R.me && R.me.state === 'active') $('#rMain').textContent = 'Забрать ' + fmt(R.me.stake * R.mult) + ' ' + T;
+  }
+}
+function netHockey(m) {
+  if (!H.run || !H.net || m.mode !== H.mode) return;
+  const now = performance.now(), prev = H.phase, old = new Map(H.entries.map(e => [e.id, e]));
+  H.entries = m.entries.map(x => {
+    const e = old.get(x.id) || {cur: null, t: null};
+    return Object.assign(e, {id: x.id, uid: x.uid, name: x.name, stake: x.stake, team: x.team, bot: x.bot, isMe: x.uid === NET.uid});
+  });
+  recolor(); H.me = H.entries.find(e => e.isMe) || null; H.lw = 0;
+  NET.count = m.n; netBadge();
+  H.finals = (m.finals || []).map(id => H.entries.find(e => e.id === id)).filter(Boolean);
+  if (m.phase === 'lobby') {
+    if (prev !== 'lobby') { H.puck = null; H.path = null; H.trail = []; H.blocks = {}; $('#hbanner').hidden = true; }
+    H.phase = 'lobby'; H.deadline = now + m.in;
+  } else if (m.phase === 'play') {
+    if (prev !== 'play' || !H.path) launchPuck(now, m.el);
+  } else if (m.phase === 'result') {
+    if (!H.path) { launchPuck(now, 1e9); updatePuck(now); }
+    if (prev !== 'result') hockeyBanner(m.pay && m.pay[NET.uid] ? m.pay[NET.uid] : null);
+    H.phase = 'result';
+  }
+  renderHPlayers(); refreshBtns();
+}
+function renderLeadersNet(rows) {
+  const ul = $('#lead'); ul.textContent = '';
+  rows.forEach(r => {
+    const li = document.createElement('li'); if (r.me) li.className = 'me';
+    const rk = document.createElement('span'); rk.className = 'rank'; rk.textContent = r.r;
+    const n = document.createElement('div'); n.className = 'n'; n.innerHTML = '<b></b>'; n.firstChild.textContent = r.n + (r.me ? ' (вы)' : '');
+    const v = document.createElement('div'); v.className = 'r'; v.textContent = fmt(r.s) + ' ' + T;
+    li.append(rk, avatar(r.n, r.me), n, v); ul.append(li);
+  });
+}
+
 /* ================= РАКЕТКА ================= */
 /* 10 вариантов оформления: цвета ракеты, огонь, украшение, анимация и фон сцены. Меняется каждый раунд. */
 const SKINS = [
@@ -460,7 +582,7 @@ const SKINS = [
   {n:'Фиеста',      b:['#FF7A59','#FFD23F','#6BB13E'], fin:'#F4C15D', win:'#FFF1D0', fl:['#E63B2E','#FFD23F'], deco:'zig',    dc:'#FFF1D0', anim:'twirl',  bg:['#38180A','#120704'], star:'#FFD23F', glow:'#FFD23F', hh:17}
 ];
 
-const R = {run: false, phase: 'wait', me: null, next: null, bots: [], hist: [], mult: 1, cp: 1, pts: [], parts: [], puffs: [], stars: [], auto: false, autoAt: 2, raf: 0, last: 0, deadline: 0, t0: 0, crashAt: 0, skin: 0};
+const R = {run: false, phase: 'wait', me: null, next: null, bots: [], hist: [], mult: 1, cp: 1, pts: [], parts: [], puffs: [], stars: [], auto: false, autoAt: 2, raf: 0, last: 0, deadline: 0, t0: 0, crashAt: 0, skin: 0, net: false, synced: false, skinSet: false};
 const rc = $('#rc'), multEl = $('#mult'), multN = $('#multN'), rstatus = $('#rstatus');
 for (let i = 0; i < 60; i++) R.stars.push({x: Math.random(), y: Math.random(), s: rnd(.6, 1.8), v: rnd(.2, 1)});
 const crashPoint = () => Math.min(200, Math.max(1, Math.floor(96 / (1 - Math.random())) / 100));
@@ -470,7 +592,7 @@ function makeBots() {
   const names = namePool();
   return Array.from({length: 6}, (_, i) => {
     const r = Math.random();
-    return {name: names[i], stake: rint(1, 30) * 10, target: r < .6 ? rnd(1.1, 2.5) : r < .9 ? rnd(2.5, 6) : rnd(6, 20), state: 'active', payout: 0, at: 0};
+    return {name: names[i], stake: rint(1, 30) * 10, target: r < .6 ? rnd(1.1, 2.5) : r < .9 ? rnd(2.5, 6) : rnd(6, 20), state: 'active', payout: 0, at: 0, bot: true};
   });
 }
 function applySkin() {
@@ -486,11 +608,17 @@ function startWait(now) {
   renderRHist(); renderRPlayers(); refreshBtns();
 }
 function startRocket() {
-  R.run = true; R.me = null; R.next = null; R.last = 0; R.skin = rint(0, SKINS.length - 1);
+  R.run = true; R.me = null; R.next = null; R.last = 0; R.net = NET.on; R.synced = false; R.skinSet = false;
+  if (R.net) {
+    R.phase = 'wait'; R.bots = []; R.pts = []; R.puffs = []; R.mult = 1; multN.textContent = '1.00'; multEl.classList.remove('crashed');
+    netSend({t: 'join', game: 'rocket'}); renderRPlayers(); refreshBtns(); R.raf = requestAnimationFrame(rocketFrame); return;
+  }
+  R.skin = rint(0, SKINS.length - 1);
   startWait(performance.now()); R.raf = requestAnimationFrame(rocketFrame);
 }
 function stopRocket() {
   R.run = false; cancelAnimationFrame(R.raf);
+  if (R.net) { netSend({t: 'leave'}); R.me = R.next = null; return; }
   if (R.me && R.me.state === 'active' && R.phase === 'wait') addBalance(R.me.stake);
   if (R.next) addBalance(R.next.stake);
   R.me = R.next = null;
@@ -501,13 +629,20 @@ function placeStake(state) {
   addBalance(-bet); return {stake: bet, state};
 }
 function cashOut(mult) {
-  const m = R.me, pay = Math.floor(m.stake * mult);
-  m.state = 'cashed'; m.payout = pay; m.at = mult;
+  const m = R.me, gross = Math.floor(m.stake * mult), fee = feeOn(gross, m.stake), pay = gross - fee;
+  m.state = 'cashed'; m.payout = pay; m.fee = fee; m.at = mult;
   S.games++; S.wins++; S.best = Math.max(S.best, pay); S.totalWon += Math.max(0, pay - m.stake);
   unlock('first'); if (mult >= 5) unlock('x5');
-  addBalance(pay); hap.ok(); toast('+' + fmt(pay) + ' ' + T); renderRPlayers(); refreshBtns();
+  addBalance(pay); hap.ok(); toast('+' + fmt(pay) + ' ' + T + (fee ? ' (комиссия −' + fmt(fee) + ')' : '')); renderRPlayers(); refreshBtns();
 }
 function rocketAct() {
+  if (R.net) {
+    const a = R.auto ? R.autoAt : null;
+    if (R.phase === 'wait') netSend(R.me ? {t: 'cancel'} : {t: 'bet', amount: bet, auto: a});
+    else if (R.me && R.me.state === 'active') netSend({t: 'cash'});
+    else netSend(R.next ? {t: 'cancel'} : {t: 'bet', amount: bet, auto: a});
+    hap.tap(); return;
+  }
   if (R.phase === 'wait') {
     if (R.me) { addBalance(R.me.stake); R.me = null; }
     else R.me = placeStake('active');
@@ -517,21 +652,24 @@ function rocketAct() {
   else R.next = placeStake('queued');
   hap.tap(); renderRPlayers(); refreshBtns();
 }
-function doCrash(now) {
-  R.phase = 'crash'; R.mult = R.cp; R.crashAt = now;
+function crashFX() {
   multN.textContent = R.cp.toFixed(2); multEl.classList.add('crashed');
   rstatus.textContent = 'Улетела на ' + R.cp.toFixed(2) + 'x';
+  const sk = SKINS[R.skin], p = rocketPos(R.mult, rc.clientWidth, rc.clientHeight), cols = [sk.b[1], sk.fl[0], sk.fl[1], sk.b[0]];
+  for (let i = 0; i < 40; i++) { const a = rnd(0, TAU), v = rnd(60, 280); R.parts.push({x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, c: cols[i % 4], s: rnd(3, 6)}); }
+}
+function doCrash(now) {
+  R.phase = 'crash'; R.mult = R.cp; R.crashAt = now;
   R.hist.unshift(R.cp); R.hist.length = 14;
   R.bots.forEach(b => { if (b.state === 'active') b.state = 'lost'; });
   if (R.me && R.me.state === 'active') { R.me.state = 'lost'; S.games++; unlock('first'); save(); hap.err(); } else hap.hit();
-  const sk = SKINS[R.skin], p = rocketPos(R.mult, rc.clientWidth, rc.clientHeight), cols = [sk.b[1], sk.fl[0], sk.fl[1], sk.b[0]];
-  for (let i = 0; i < 40; i++) { const a = rnd(0, TAU), v = rnd(60, 280); R.parts.push({x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, c: cols[i % 4], s: rnd(3, 6)}); }
-  renderRHist(); renderRPlayers(); refreshBtns();
+  crashFX(); renderRHist(); renderRPlayers(); refreshBtns();
 }
 function rocketFrame(now) {
   if (!R.run) return;
   const dt = Math.min(50, now - (R.last || now)) / 1000; R.last = now;
-  if (R.phase === 'wait') {
+  if (R.net) netRocketTick(now);
+  else if (R.phase === 'wait') {
     rstatus.textContent = 'До старта ' + Math.max(0, Math.ceil((R.deadline - now) / 1000));
     if (now >= R.deadline) { R.phase = 'fly'; R.t0 = now; R.cp = crashPoint(); rstatus.textContent = ''; renderRPlayers(); refreshBtns(); }
   } else if (R.phase === 'fly') {
@@ -540,7 +678,7 @@ function rocketFrame(now) {
     else {
       R.mult = m; multN.textContent = m.toFixed(2);
       let ch = false;
-      R.bots.forEach(b => { if (b.state === 'active' && m >= b.target) { b.state = 'cashed'; b.at = b.target; b.payout = Math.floor(b.stake * b.target); ch = true; } });
+      R.bots.forEach(b => { if (b.state === 'active' && m >= b.target) { b.state = 'cashed'; b.at = b.target; { const g = Math.floor(b.stake * b.target); b.payout = g - feeOn(g, b.stake); } ch = true; } });
       if (R.me && R.me.state === 'active' && R.auto && m >= R.autoAt) cashOut(R.autoAt);
       if (ch) renderRPlayers();
       if (R.me && R.me.state === 'active') $('#rMain').textContent = 'Забрать ' + fmt(R.me.stake * m) + ' ' + T;
@@ -657,11 +795,11 @@ function renderRPlayers() {
   const ul = $('#rplayers'); ul.textContent = '';
   const rows = [], mine = R.me || R.next;
   if (mine) rows.push({name: myName + ' (вы)', me: true, stake: mine.stake, state: mine.state, at: mine.at, payout: mine.payout});
-  R.bots.forEach(b => rows.push({name: b.name, stake: b.stake, state: b.state, at: b.at, payout: b.payout}));
+  R.bots.forEach(b => rows.push({name: b.name, stake: b.stake, state: b.state, at: b.at, payout: b.payout, bot: b.bot}));
   rows.forEach(r => {
     const li = document.createElement('li'); if (r.me) li.className = 'me';
     const n = document.createElement('div'); n.className = 'n';
-    n.innerHTML = '<b></b><span></span>'; n.firstChild.textContent = r.name; n.lastChild.textContent = fmt(r.stake) + ' ' + T + (r.state === 'queued' ? ', на следующий раунд' : '');
+    n.innerHTML = '<b></b><span></span>'; n.firstChild.textContent = r.name; n.lastChild.textContent = fmt(r.stake) + ' ' + T + (r.bot ? ' · бот' : '') + (r.state === 'queued' ? ', на следующий раунд' : '');
     const v = document.createElement('div'); v.className = 'r';
     if (r.state === 'cashed') { v.classList.add('win'); v.textContent = '+' + fmt(r.payout) + ' · ' + r.at.toFixed(2) + 'x'; }
     else if (r.state === 'lost') { v.classList.add('dim'); v.textContent = 'улетела'; }
@@ -669,8 +807,9 @@ function renderRPlayers() {
     li.append(avatar(r.name, r.me), n, v); ul.append(li);
   });
 }
-$('#autoSw').addEventListener('click', e => { R.auto = !R.auto; e.currentTarget.setAttribute('aria-checked', R.auto); hap.sel(); });
-$('#autoAt').addEventListener('input', e => { R.autoAt = Math.max(1.1, parseFloat(e.target.value) || 2); });
+const sendAuto = () => { if (R.net && (R.me || R.next)) netSend({t: 'auto', at: R.auto ? R.autoAt : null}); };
+$('#autoSw').addEventListener('click', e => { R.auto = !R.auto; e.currentTarget.setAttribute('aria-checked', R.auto); hap.sel(); sendAuto(); });
+$('#autoAt').addEventListener('input', e => { R.autoAt = Math.max(1.1, parseFloat(e.target.value) || 2); sendAuto(); });
 $('#rMain').addEventListener('click', rocketAct);
 function rocketBtn() {
   const b = $('#rMain'); b.classList.remove('alt'); b.disabled = false;
@@ -686,12 +825,12 @@ const TEAMS = {
   A: {name: 'Сальса', c: '#E63B2E', pal: ['#E63B2E', '#C2251B', '#F0532F', '#FF7A59']},
   B: {name: 'Гуакамоле', c: '#6BB13E', pal: ['#6BB13E', '#4E9A2E', '#8CC63F', '#A6D854']}
 };
-const H = {run: false, mode: 'ffa', phase: 'lobby', team: 'A', entries: [], me: null, deadline: 0, joins: [], finals: [], raf: 0, last: 0, listT: 0, W: 300, Hh: 300, lw: 0, lh: 0, blocks: {}, puck: null, path: null, playT0: 0, dur: 5200, resultAt: 0, lastSeg: 0, trail: []};
+const H = {run: false, mode: 'ffa', phase: 'lobby', team: 'A', entries: [], me: null, deadline: 0, joins: [], finals: [], raf: 0, last: 0, listT: 0, W: 300, Hh: 300, lw: 0, lh: 0, blocks: {}, puck: null, path: null, playT0: 0, dur: 5200, resultAt: 0, lastSeg: 0, trail: [], net: false};
 const hc = $('#hc');
 
 function entryColor(e, idx) { return H.mode === 'team' ? TEAMS[e.team].pal[idx % 4] : HC[idx % HC.length]; }
 function makeEntry(name, stake, team, isMe) {
-  const e = {name, stake, team, isMe, cur: null, t: null, id: H.entries.length};
+  const e = {name, stake, team, isMe, bot: !isMe, cur: null, t: null, id: H.entries.length};
   e.color = entryColor(e, H.entries.length); return e;
 }
 function recolor() { H.entries.forEach((e, i) => { e.color = entryColor(e, i); }); }
@@ -703,14 +842,23 @@ function startLobby(now) {
   H.joins = Array.from({length: n}, (_, i) => ({at: now + rnd(300, 9000), name: names[i], stake: rint(1, 20) * 10, team: i % 2 ? 'A' : 'B'})).sort((a, b) => a.at - b.at);
   renderHPlayers(); refreshBtns();
 }
-function startHockey() { H.run = true; H.last = 0; H.lw = 0; startLobby(performance.now()); H.raf = requestAnimationFrame(hockeyFrame); }
+function startHockey() {
+  H.run = true; H.last = 0; H.lw = 0; H.net = NET.on;
+  if (H.net) {
+    H.phase = 'lobby'; H.entries = []; H.me = null; H.finals = []; H.path = null; H.puck = null; H.trail = []; H.blocks = {}; H.deadline = performance.now() + 15000;
+    $('#hbanner').hidden = true; netSend({t: 'join', game: 'hockey', mode: H.mode}); renderHPlayers(); refreshBtns();
+  } else startLobby(performance.now());
+  H.raf = requestAnimationFrame(hockeyFrame);
+}
 function stopHockey() {
   H.run = false; cancelAnimationFrame(H.raf);
+  if (H.net) { netSend({t: 'leave'}); H.me = null; H.entries = []; return; }
   if (H.me && H.phase === 'lobby') addBalance(H.me.stake);
   H.me = null; H.entries = [];
 }
 function hockeyAct() {
   if (H.phase !== 'lobby') return;
+  if (H.net) { netSend(H.me ? {t: 'cancel'} : {t: 'bet', amount: bet, team: H.team}); hap.tap(); return; }
   if (H.me) { addBalance(H.me.stake); H.entries.splice(H.entries.indexOf(H.me), 1); H.me = null; recolor(); }
   else {
     clampBet(); if (S.balance < 10 || bet > S.balance) { toast('Не хватает тако. Забери бонус в кошельке'); return; }
@@ -722,9 +870,11 @@ $('#hMain').addEventListener('click', hockeyAct);
 $('#hmode').addEventListener('click', e => {
   const b = e.target.closest('[data-mode]'); if (!b || b.dataset.mode === H.mode) return;
   if (H.phase !== 'lobby') { toast('Дождись конца раунда'); return; }
-  if (H.me) addBalance(H.me.stake);
+  if (H.me && !H.net) addBalance(H.me.stake);
   H.mode = b.dataset.mode; $$('#hmode button').forEach(x => x.classList.toggle('on', x === b));
-  $('#hteam').hidden = H.mode !== 'team'; startLobby(performance.now()); hap.sel();
+  $('#hteam').hidden = H.mode !== 'team'; hap.sel();
+  if (H.net) { H.entries = []; H.me = null; H.finals = []; H.phase = 'lobby'; H.deadline = performance.now() + 15000; H.lw = 0; netSend({t: 'join', game: 'hockey', mode: H.mode}); renderHPlayers(); refreshBtns(); }
+  else startLobby(performance.now());
 });
 $('#hteam').addEventListener('click', e => {
   const b = e.target.closest('[data-team]'); if (!b) return;
@@ -771,10 +921,14 @@ function beginPlay(now) {
     const A = es.filter(e => e.team === 'A'), B = es.filter(e => e.team === 'B'), sa = sumStake(A), sb = sumStake(B);
     winners = !sb ? A : !sa ? B : (Math.random() * (sa + sb) < sa ? A : B);
   }
-  H.finals = winners;
-  const zone = H.mode === 'ffa' ? winners[0].t : H.blocks[winners[0].team];
+  H.finals = winners; launchPuck(now, 0); refreshBtns();
+}
+/* шайба летит по ломаной с отскоками от бортов и замедляется; финальная точка лежит в зоне победителя */
+function launchPuck(now, elapsed) {
+  relayout();
+  const w = H.finals[0], {W, Hh} = H, zone = (H.mode === 'ffa' ? w.t : H.blocks[w.team]) || {x: 0, y: 0, w: W, h: Hh};
   const target = {x: zone.x + zone.w * rnd(.28, .72), y: zone.y + zone.h * rnd(.28, .72)};
-  const {W, Hh} = H, m = W * .04, pts = [{x: W / 2, y: Hh / 2}];
+  const m = W * .04, pts = [{x: W / 2, y: Hh / 2}];
   let wall = -1;
   for (let i = 0, n = rint(4, 6); i < n; i++) {
     let s; do { s = rint(0, 3); } while (s === wall); wall = s;
@@ -783,7 +937,7 @@ function beginPlay(now) {
   pts.push(target);
   const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
   H.path = {pts, cum, total: cum[cum.length - 1]}; H.trail = []; H.lastSeg = 0;
-  H.phase = 'play'; H.playT0 = now; refreshBtns();
+  H.phase = 'play'; H.playT0 = now - elapsed;
 }
 function puckAt(k) {
   const {pts, cum, total} = H.path, s = k * total;
@@ -791,34 +945,47 @@ function puckAt(k) {
   const f = (s - cum[i - 1]) / Math.max(1, cum[i] - cum[i - 1]);
   return {x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f, seg: i};
 }
+function hockeyBanner(pay) {
+  const total = pot(), fin = H.finals;
+  let msg = (H.mode === 'ffa' ? 'Победил ' + esc(fin[0].name) : 'Победили ' + TEAMS[fin[0].team].name) + ' · банк ' + fmt(total) + ' ' + T;
+  if (H.me) {
+    if (pay) { msg += '<br><span style="color:#A6D854">Ты получил +' + fmt(pay.net) + ' ' + T + (pay.fee ? ' · комиссия −' + fmt(pay.fee) : '') + '</span>'; hap.ok(); }
+    else { msg += '<br><span class="mut">В этот раз без выигрыша</span>'; hap.err(); }
+  } else hap.hit();
+  const bn = $('#hbanner'); bn.innerHTML = msg; bn.hidden = false;
+}
 function payout() {
   const total = pot(), fin = H.finals, finStake = sumStake(fin);
-  let msg = H.mode === 'ffa' ? 'Победил ' + fin[0].name + ' · банк ' + fmt(total) + ' ' + T : 'Победили ' + TEAMS[fin[0].team].name + ' · банк ' + fmt(total) + ' ' + T;
+  let pay = null;
   if (H.me) {
     S.games++;
     if (fin.includes(H.me)) {
-      const pay = Math.floor(total * H.me.stake / finStake);
-      S.wins++; S.best = Math.max(S.best, pay); S.totalWon += Math.max(0, pay - H.me.stake);
+      const gross = Math.floor(total * H.me.stake / finStake), fee = feeOn(gross, H.me.stake), net = gross - fee;
+      S.wins++; S.best = Math.max(S.best, net); S.totalWon += Math.max(0, net - H.me.stake);
       unlock('goal'); if (H.mode === 'team') unlock('team');
-      addBalance(pay); hap.ok(); msg += '<br><span style="color:#A6D854">Ты получил +' + fmt(pay) + ' ' + T + '</span>';
-    } else { hap.err(); msg += '<br><span class="mut">В этот раз без выигрыша</span>'; }
+      addBalance(net); pay = {net, fee};
+    }
     save();
-  } else hap.hit();
-  const bn = $('#hbanner'); bn.innerHTML = msg; bn.hidden = false;
+  }
+  hockeyBanner(pay);
+}
+function updatePuck(now) {
+  const k = Math.min(1, (now - H.playT0) / H.dur), e = 1 - Math.pow(1 - k, 3), p = puckAt(e);
+  if (p.seg !== H.lastSeg) { if (H.lastSeg) hap.hit(); H.lastSeg = p.seg; }
+  H.puck = p; H.trail.push({x: p.x, y: p.y}); if (H.trail.length > 16) H.trail.shift();
+  return k;
 }
 function hockeyFrame(now) {
   if (!H.run) return;
   const dt = Math.min(50, now - (H.last || now)) / 1000; H.last = now;
-  if (H.phase === 'lobby') {
+  if (H.net) { if (H.phase === 'play' && H.path) updatePuck(now); }
+  else if (H.phase === 'lobby') {
     let ch = false;
     while (H.joins.length && H.joins[0].at <= now) { const j = H.joins.shift(); H.entries.push(makeEntry(j.name, j.stake, j.team, false)); ch = true; hap.sel(); }
     if (ch) { H.lw = 0; renderHPlayers(); }
     if (now >= H.deadline) beginPlay(now);
   } else if (H.phase === 'play') {
-    const k = Math.min(1, (now - H.playT0) / H.dur), e = 1 - Math.pow(1 - k, 3), p = puckAt(e);
-    if (p.seg !== H.lastSeg) { if (H.lastSeg) hap.hit(); H.lastSeg = p.seg; }
-    H.puck = p; H.trail.push({x: p.x, y: p.y}); if (H.trail.length > 16) H.trail.shift();
-    if (k >= 1) { H.phase = 'result'; H.resultAt = now; payout(); renderHPlayers(); refreshBtns(); }
+    if (updatePuck(now) >= 1) { H.phase = 'result'; H.resultAt = now; payout(); renderHPlayers(); refreshBtns(); }
   } else if (H.phase === 'result' && now - H.resultAt > 3600) startLobby(now);
   const ph = H.phase === 'lobby' ? 'До старта ' + fmtT(H.deadline - now) : H.phase === 'result' ? 'Раунд окончен' : 'Шайба в игре';
   $('#htimer').textContent = ph; $('#hbank').innerHTML = 'Банк <b>' + fmt(pot()) + ' ' + T + '</b>';
@@ -883,7 +1050,7 @@ function renderHPlayers() {
   H.entries.forEach(e => {
     const li = document.createElement('li'); if (e.isMe) li.className = 'me';
     const n = document.createElement('div'); n.className = 'n'; n.innerHTML = '<b></b><span></span>';
-    n.firstChild.textContent = e.name + (e.isMe ? ' (вы)' : ''); n.lastChild.textContent = fmt(e.stake) + ' ' + T + (H.mode === 'team' ? ' · ' + TEAMS[e.team].name : '');
+    n.firstChild.textContent = e.name + (e.isMe ? ' (вы)' : ''); n.lastChild.textContent = fmt(e.stake) + ' ' + T + (e.bot ? ' · бот' : '') + (H.mode === 'team' ? ' · ' + TEAMS[e.team].name : '');
     const v = document.createElement('div'); v.className = 'r';
     const chance = H.mode === 'ffa' ? e.stake / total : tStake[e.team] / total;
     if (H.phase === 'result') { const w = H.finals.includes(e); v.className = 'r ' + (w ? 'win' : 'dim'); v.textContent = w ? 'победа' : '—'; }
@@ -924,6 +1091,7 @@ function renderProfile() {
 /* ================= бонус и кошелёк ================= */
 const dayKey = (d = new Date()) => d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
 function bonusInfo() {
+  if (NET.on && NET.bonus) return NET.bonus;
   const today = dayKey(), y = new Date(); y.setDate(y.getDate() - 1);
   const next = S.lastBonus === dayKey(y) ? S.streak + 1 : 1;
   return {claimed: S.lastBonus === today, amount: 300 + 100 * Math.min(next - 1, 5), next};
@@ -937,12 +1105,13 @@ function renderBonus() {
 }
 function claimBonus() {
   const b = bonusInfo(); if (b.claimed) return;
+  if (NET.on) { netSend({t: 'bonus'}); return; }
   S.lastBonus = dayKey(); S.streak = b.next; if (S.streak >= 3) unlock('streak3');
   addBalance(b.amount); hap.ok(); toast('+' + fmt(b.amount) + ' ' + T); renderBonus(); refreshBtns();
 }
 ['#bonusBtn', '#pbonusBtn', '#wbonus'].forEach(s => $(s).addEventListener('click', claimBonus));
 $('#wreset').addEventListener('click', () => {
-  const go = () => { if (view === 'rocket' && (R.me || R.next)) return toast('Сначала закончи ставку'); if (view === 'hockey' && H.me) return toast('Сначала закончи ставку'); S.balance = 1000; save(); renderBalance(); refreshBtns(); closeWallet(); toast('Баланс: 1 000 ' + T); };
+  const go = () => { if (view === 'rocket' && (R.me || R.next)) return toast('Сначала закончи ставку'); if (view === 'hockey' && H.me) return toast('Сначала закончи ставку'); if (NET.on) { netSend({t: 'reset'}); closeWallet(); return; } S.balance = 1000; save(); renderBalance(); refreshBtns(); closeWallet(); toast('Баланс: 1 000 ' + T); };
   if (tg && tg.showConfirm) tg.showConfirm('Начать заново с 1000 тако?', ok => ok && go()); else if (confirm('Начать заново с 1000 тако?')) go();
 });
 function openWallet() { renderBonus(); $('#wallet').classList.add('open'); $('#scrim').classList.add('open'); $('#wallet').setAttribute('aria-hidden', 'false'); }
@@ -966,7 +1135,11 @@ function go(v) {
   $('#back').hidden = !game;
   $$('.tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === (game ? 'home' : v)));
   if (tg && tg.BackButton) safe(() => game ? tg.BackButton.show() : tg.BackButton.hide());
-  if (v === 'leaders') renderLeaders(); if (v === 'profile') { renderProfile(); renderBonus(); }
+  if (v === 'leaders') {
+    if (NET.on) { netSend({t: 'leaders'}); $('#lead').innerHTML = '<li><span class="mut">Загружаем…</span></li>'; $('#leadnote').textContent = 'Топ игроков Арены по выигранным тако.'; }
+    else { renderLeaders(); $('#leadnote').textContent = 'Таблица демонстрационная: остальные игроки — боты.'; }
+  }
+  if (v === 'profile') { renderProfile(); renderBonus(); }
   if (v === 'home') renderBonus();
   window.scrollTo(0, 0);
   clampBet(); renderBalance();
@@ -979,7 +1152,7 @@ $('#back').addEventListener('click', () => go('home'));
 if (tg && tg.BackButton) safe(() => tg.BackButton.onClick(() => go('home')));
 
 /* ================= старт ================= */
-clampBet(); renderBalance(); renderBonus(); renderRHist();
+clampBet(); renderBalance(); renderBonus(); renderRHist(); netBadge(); netConnect();
 if (document.fonts && document.fonts.load) Promise.all([document.fonts.load('700 16px Onest'), document.fonts.load('700 16px Unbounded')]).catch(() => {});
 })();
 </script>
