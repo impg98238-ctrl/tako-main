@@ -665,3 +665,20 @@ def make_app(hub, index_path='index.html'):
     app.router.add_get('/health', health)
     app.router.add_get('/', index)
     return app
+         if __name__ == '__main__':
+    from aiohttp import web
+
+    token = os.environ.get('BOT_TOKEN')
+    if not token:
+        raise RuntimeError('BOT_TOKEN is not set')
+
+    hub = Hub(token)
+    hub.start()
+
+    app = make_app(hub)
+
+    web.run_app(
+        app,
+        host='0.0.0.0',
+        port=int(os.environ.get('PORT', 10000))
+    )
