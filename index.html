@@ -825,7 +825,9 @@ const TEAMS = {
   A: {name: 'Сальса', c: '#E63B2E', pal: ['#E63B2E', '#C2251B', '#F0532F', '#FF7A59']},
   B: {name: 'Гуакамоле', c: '#6BB13E', pal: ['#6BB13E', '#4E9A2E', '#8CC63F', '#A6D854']}
 };
-const H = {run: false, mode: 'ffa', phase: 'lobby', team: 'A', entries: [], me: null, deadline: 0, joins: [], finals: [], raf: 0, last: 0, listT: 0, W: 300, Hh: 300, lw: 0, lh: 0, blocks: {}, puck: null, path: null, playT0: 0, dur: 5200, resultAt: 0, lastSeg: 0, trail: [], net: false};
+const H = {run: false, mode: 'ffa', phase: 'lobby', team: 'A', entries: [], me: null, deadline: 0, joins: [], finals: [], raf: 0, last: 0, listT: 0, W: 300, Hh: 300, lw: 0, lh: 0, blocks: {}, puck: null, path: null, pathStep: 0, lastIdx: 0, playT0: 0, resultAt: 0, trail: [], net: false};
+const HDUR = 4200;   // мс: сколько шайба едет от центра до цели
+const PUCK_R = .022;  // радиус шайбы, доля от меньшей стороны поля
 const hc = $('#hc');
 
 function entryColor(e, idx) { return H.mode === 'team' ? TEAMS[e.team].pal[idx % 4] : HC[idx % HC.length]; }
@@ -858,12 +860,10 @@ function stopHockey() {
 }
 function hockeyAct() {
   if (H.phase !== 'lobby') return;
-  if (H.net) { netSend(H.me ? {t: 'cancel'} : {t: 'bet', amount: bet, team: H.team}); hap.tap(); return; }
-  if (H.me) { addBalance(H.me.stake); H.entries.splice(H.entries.indexOf(H.me), 1); H.me = null; recolor(); }
-  else {
-    clampBet(); if (S.balance < 10 || bet > S.balance) { toast('Не хватает тако. Забери бонус в кошельке'); return; }
-    addBalance(-bet); H.me = makeEntry(myName, bet, H.team, true); H.entries.push(H.me);
-  }
+  clampBet(); if (S.balance < 10 || bet > S.balance) { toast('Не хватает тако. Забери бонус в кошельке'); return; }
+  if (H.net) { netSend({t: 'bet', amount: bet, team: H.team}); hap.tap(); return; }
+  addBalance(-bet);
+  if (H.me) H.me.stake += bet; else { H.me = makeEntry(myName, bet, H.team, true); H.entries.push(H.me); }
   H.lw = 0; hap.tap(); renderHPlayers(); refreshBtns();
 }
 $('#hMain').addEventListener('click', hockeyAct);
@@ -923,27 +923,46 @@ function beginPlay(now) {
   }
   H.finals = winners; launchPuck(now, 0); refreshBtns();
 }
-/* шайба летит по ломаной с отскоками от бортов и замедляется; финальная точка лежит в зоне победителя */
+/* Шайба едет с настоящей физикой: летит по прямой, отражается от бортов угол-в-угол, теряет скорость от трения
+   и понемногу подтягивается к цели — так итог всегда честно совпадает с зоной победителя, а полёт выглядит живым. */
+/* Настоящая физика без всякой «подтяжки»: шайба летит по прямой, честно отражается от бортов и тормозит
+   трением. Чтобы она всё равно останавливалась в зоне победителя, перебираем стартовый угол и скорость —
+   быстрый перебор десятков вариантов «выстрела», пока один не приведёт шайбу точно в нужную зону. */
+function simulateFreePuck(W, Hh, ang, speed0) {
+  const pr = Math.min(W, Hh) * PUCK_R, pad = pr + 1;
+  const dt = 1 / 60, steps = Math.round(HDUR / 1000 / dt), fric = 1.15, rest = .86;
+  let x = W / 2, y = Hh / 2, vx = Math.cos(ang) * speed0, vy = Math.sin(ang) * speed0;
+  const pts = [{x, y, b: false}];
+  for (let i = 1; i <= steps; i++) {
+    vx *= (1 - fric * dt); vy *= (1 - fric * dt); x += vx * dt; y += vy * dt;
+    let b = false;
+    if (x < pad) { x = pad; vx = Math.abs(vx) * rest; b = true; } else if (x > W - pad) { x = W - pad; vx = -Math.abs(vx) * rest; b = true; }
+    if (y < pad) { y = pad; vy = Math.abs(vy) * rest; b = true; } else if (y > Hh - pad) { y = Hh - pad; vy = -Math.abs(vy) * rest; b = true; }
+    pts.push({x, y, b});
+  }
+  return pts;
+}
 function launchPuck(now, elapsed) {
   relayout();
   const w = H.finals[0], {W, Hh} = H, zone = (H.mode === 'ffa' ? w.t : H.blocks[w.team]) || {x: 0, y: 0, w: W, h: Hh};
-  const target = {x: zone.x + zone.w * rnd(.28, .72), y: zone.y + zone.h * rnd(.28, .72)};
-  const m = W * .04, pts = [{x: W / 2, y: Hh / 2}];
-  let wall = -1;
-  for (let i = 0, n = rint(4, 6); i < n; i++) {
-    let s; do { s = rint(0, 3); } while (s === wall); wall = s;
-    pts.push(s === 0 ? {x: rnd(m, W - m), y: m} : s === 1 ? {x: W - m, y: rnd(m, Hh - m)} : s === 2 ? {x: rnd(m, W - m), y: Hh - m} : {x: m, y: rnd(m, Hh - m)});
+  const gp = Math.min(zone.w, zone.h) * .16;
+  const gx0 = zone.x + gp, gx1 = zone.x + zone.w - gp, gy0 = zone.y + gp, gy1 = zone.y + zone.h - gp;
+  let best = null, bestD = Infinity;
+  for (let t = 0; t < 260 && bestD > 1; t++) {
+    const ang = rnd(0, TAU), spd = Math.min(W, Hh) * rnd(2.4, 3.4);
+    const pts = simulateFreePuck(W, Hh, ang, spd), last = pts[pts.length - 1];
+    const dx = Math.max(gx0 - last.x, 0, last.x - gx1), dy = Math.max(gy0 - last.y, 0, last.y - gy1), d = Math.hypot(dx, dy);
+    if (d < bestD) { bestD = d; best = pts; }
   }
-  pts.push(target);
-  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
-  H.path = {pts, cum, total: cum[cum.length - 1]}; H.trail = []; H.lastSeg = 0;
-  H.phase = 'play'; H.playT0 = now - elapsed;
-}
-function puckAt(k) {
-  const {pts, cum, total} = H.path, s = k * total;
-  let i = 1; while (i < cum.length - 1 && cum[i] < s) i++;
-  const f = (s - cum[i - 1]) / Math.max(1, cum[i] - cum[i - 1]);
-  return {x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f, seg: i};
+  // страховка на случай совсем маленькой зоны, куда честный перебор не дотянулся за отведённые попытки —
+  // тогда самые последние кадры плавно доводят шайбу внутрь; в обычной игре это не требуется
+  if (bestD > 1) {
+    const last = best[best.length - 1], gx = Math.max(gx0, Math.min(gx1, last.x)), gy = Math.max(gy0, Math.min(gy1, last.y));
+    const tail = Math.min(20, best.length - 1), base = best.length - 1 - tail, bx = best[base].x, by = best[base].y;
+    for (let i = 1; i <= tail; i++) { const f = i / tail, e = 1 - Math.pow(1 - f, 3); best[base + i] = {x: bx + (gx - bx) * e, y: by + (gy - by) * e, b: false}; }
+  }
+  H.path = best; H.pathStep = HDUR / (H.path.length - 1); H.lastIdx = 0;
+  H.trail = []; H.phase = 'play'; H.playT0 = now - elapsed;
 }
 function hockeyBanner(pay) {
   const total = pot(), fin = H.finals;
@@ -970,9 +989,9 @@ function payout() {
   hockeyBanner(pay);
 }
 function updatePuck(now) {
-  const k = Math.min(1, (now - H.playT0) / H.dur), e = 1 - Math.pow(1 - k, 3), p = puckAt(e);
-  if (p.seg !== H.lastSeg) { if (H.lastSeg) hap.hit(); H.lastSeg = p.seg; }
-  H.puck = p; H.trail.push({x: p.x, y: p.y}); if (H.trail.length > 16) H.trail.shift();
+  const k = Math.min(1, (now - H.playT0) / HDUR), idx = Math.min(H.path.length - 1, Math.floor((now - H.playT0) / H.pathStep));
+  if (idx > H.lastIdx) { for (let i = H.lastIdx + 1; i <= idx; i++) if (H.path[i].b) hap.hit(); H.lastIdx = idx; }
+  H.puck = H.path[idx]; H.trail.push({x: H.puck.x, y: H.puck.y}); if (H.trail.length > 16) H.trail.shift();
   return k;
 }
 function hockeyFrame(now) {
@@ -1033,7 +1052,7 @@ function hockeyDraw(dt, now) {
   // рамка площадки
   c.lineWidth = 3; c.strokeStyle = 'rgba(255,241,208,.5)'; rr(c, 1.5, 1.5, w - 3, h - 3, 20); c.stroke();
   // шайба
-  const pr = w * .034;
+  const pr = Math.min(w, h) * PUCK_R;
   let px = w / 2, py = h / 2 + (H.entries.length ? 0 : 0);
   if (H.puck) { px = H.puck.x; py = H.puck.y; }
   else if (H.phase === 'lobby') { py = h / 2 + Math.sin(now / 350) * 3; }
@@ -1061,8 +1080,7 @@ function renderHPlayers() {
 function hockeyBtn() {
   const b = $('#hMain'); b.classList.remove('alt'); b.disabled = false;
   if (H.phase !== 'lobby') { b.textContent = H.me ? 'Ставка принята: ' + fmt(H.me.stake) + ' ' + T : 'Раунд идёт'; b.disabled = true; }
-  else if (H.me) { b.textContent = 'Отменить ставку ' + fmt(H.me.stake) + ' ' + T; b.classList.add('alt'); }
-  else b.textContent = 'Поставить ' + fmt(bet) + ' ' + T;
+  else b.textContent = (H.me ? 'Добавить ещё ' : 'Поставить ') + fmt(bet) + ' ' + T;
 }
 function refreshBtns() { rocketBtn(); hockeyBtn(); }
 
