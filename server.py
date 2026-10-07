@@ -21,7 +21,7 @@ START_BALANCE = 1000
 RESET_BELOW = 100          # «начать заново» доступно, только если тако почти не осталось
 
 R_WAIT, R_CRASH_PAUSE, R_GROWTH = 5.0, 2.6, 0.12
-H_LOBBY, H_PLAY, H_RESULT = 15.0, 5.6, 3.8
+H_LOBBY, H_PLAY, H_RESULT = 15.0, 6.5, 3.8   # H_PLAY = запас сверх HSPIN+HDUR клиента (1.1+5.2=6.3с)
 
 NAMES = ['Артём', 'Дима', 'Стас', 'Лена', 'Макс', 'Ника', 'Игорь', 'Соня', 'Влад', 'Кира', 'Ян', 'Полина',
          'Гоша', 'Аня', 'Тимур', 'Ева']
@@ -429,27 +429,20 @@ class HockeyRoom(Room):
 
     async def act(self, conn, t, msg):
         u = conn.user
-        if self.phase != 'lobby':
+        # Ставку в хоккее нельзя отменить, только добавить к ней ещё — здесь нет ветки 'cancel'.
+        if self.phase != 'lobby' or t != 'bet':
             return
+        amt = parse_amount(msg, u)
+        if amt is None:
+            return await conn.send({'t': 'msg', 'text': 'Не хватает тако'})
         mine = next((e for e in self.entries if e['uid'] == u.uid), None)
-        if t == 'bet':
-            if mine:
-                return
-            amt = parse_amount(msg, u)
-            if amt is None:
-                return await conn.send({'t': 'msg', 'text': 'Не хватает тако'})
-            team = msg.get('team') if msg.get('team') in ('A', 'B') and self.mode == 'team' else 'A'
-            u.balance -= amt
-            self.hub.store.save(u)
-            self.add_entry(u.name, amt, team, user=u)
-        elif t == 'cancel':
-            if not mine:
-                return
-            self.entries.remove(mine)
-            u.balance += mine['stake']
-            self.hub.store.save(u)
+        u.balance -= amt
+        self.hub.store.save(u)
+        if mine:
+            mine['stake'] += amt
         else:
-            return
+            team = msg.get('team') if msg.get('team') in ('A', 'B') and self.mode == 'team' else 'A'
+            self.add_entry(u.name, amt, team, user=u)
         await self.broadcast(self.state_msg())
         await self.hub.push_me(u)
 
@@ -665,32 +658,3 @@ def make_app(hub, index_path='index.html'):
     app.router.add_get('/health', health)
     app.router.add_get('/', index)
     return app
-         
-if __name__ == '__main__':
-    from aiohttp import web
-
-    token = os.environ.get('BOT_TOKEN')
-    if not token:
-        raise RuntimeError('BOT_TOKEN is not set')
-
-    async def main():
-        hub = Hub(token)
-
-        for room in (hub.rocket, *hub.hockey.values()):
-            asyncio.create_task(room.run())
-
-        app = make_app(hub)
-
-        runner = web.AppRunner(app)
-        await runner.setup()
-
-        site = web.TCPSite(
-            runner,
-            '0.0.0.0',
-            int(os.environ.get('PORT', 10000))
-        )
-        await site.start()
-
-        await asyncio.Event().wait()
-
-    asyncio.run(main())
