@@ -825,8 +825,9 @@ const TEAMS = {
   A: {name: 'Сальса', c: '#E63B2E', pal: ['#E63B2E', '#C2251B', '#F0532F', '#FF7A59']},
   B: {name: 'Гуакамоле', c: '#6BB13E', pal: ['#6BB13E', '#4E9A2E', '#8CC63F', '#A6D854']}
 };
-const H = {run: false, mode: 'ffa', phase: 'lobby', team: 'A', entries: [], me: null, deadline: 0, joins: [], finals: [], raf: 0, last: 0, listT: 0, W: 300, Hh: 300, lw: 0, lh: 0, blocks: {}, puck: null, path: null, pathStep: 0, lastIdx: 0, playT0: 0, resultAt: 0, trail: [], net: false};
-const HDUR = 4200;   // мс: сколько шайба едет от центра до цели
+const H = {run: false, mode: 'ffa', phase: 'lobby', team: 'A', entries: [], me: null, deadline: 0, joins: [], finals: [], raf: 0, last: 0, listT: 0, W: 300, Hh: 300, lw: 0, lh: 0, blocks: {}, puck: null, path: null, pathStep: 0, lastIdx: 0, playT0: 0, resultAt: 0, trail: [], net: false, arrow: 0, arrow0: 0, spinTotal: 0, camK: 0};
+const HSPIN = 1100;   // мс: шайба крутится на месте со стрелкой, прежде чем полететь
+const HDUR = 5200;    // мс: сколько шайба едет после спина
 const PUCK_R = .022;  // радиус шайбы, доля от меньшей стороны поля
 const hc = $('#hc');
 
@@ -932,13 +933,13 @@ function simulateFreePuck(W, Hh, ang, speed0) {
   const pr = Math.min(W, Hh) * PUCK_R, pad = pr + 1;
   const dt = 1 / 60, steps = Math.round(HDUR / 1000 / dt), fric = 1.15, rest = .86;
   let x = W / 2, y = Hh / 2, vx = Math.cos(ang) * speed0, vy = Math.sin(ang) * speed0;
-  const pts = [{x, y, b: false}];
+  const pts = [{x, y, b: false, s: speed0}];
   for (let i = 1; i <= steps; i++) {
     vx *= (1 - fric * dt); vy *= (1 - fric * dt); x += vx * dt; y += vy * dt;
     let b = false;
     if (x < pad) { x = pad; vx = Math.abs(vx) * rest; b = true; } else if (x > W - pad) { x = W - pad; vx = -Math.abs(vx) * rest; b = true; }
     if (y < pad) { y = pad; vy = Math.abs(vy) * rest; b = true; } else if (y > Hh - pad) { y = Hh - pad; vy = -Math.abs(vy) * rest; b = true; }
-    pts.push({x, y, b});
+    pts.push({x, y, b, s: Math.hypot(vx, vy)});
   }
   return pts;
 }
@@ -947,22 +948,25 @@ function launchPuck(now, elapsed) {
   const w = H.finals[0], {W, Hh} = H, zone = (H.mode === 'ffa' ? w.t : H.blocks[w.team]) || {x: 0, y: 0, w: W, h: Hh};
   const gp = Math.min(zone.w, zone.h) * .16;
   const gx0 = zone.x + gp, gx1 = zone.x + zone.w - gp, gy0 = zone.y + gp, gy1 = zone.y + zone.h - gp;
-  let best = null, bestD = Infinity;
+  let best = null, bestD = Infinity, bestAng = 0, bestSpd = 0;
   for (let t = 0; t < 260 && bestD > 1; t++) {
-    const ang = rnd(0, TAU), spd = Math.min(W, Hh) * rnd(2.4, 3.4);
+    const ang = rnd(0, TAU), spd = Math.min(W, Hh) * rnd(2.6, 3.6);
     const pts = simulateFreePuck(W, Hh, ang, spd), last = pts[pts.length - 1];
     const dx = Math.max(gx0 - last.x, 0, last.x - gx1), dy = Math.max(gy0 - last.y, 0, last.y - gy1), d = Math.hypot(dx, dy);
-    if (d < bestD) { bestD = d; best = pts; }
+    if (d < bestD) { bestD = d; best = pts; bestAng = ang; bestSpd = spd; }
   }
   // страховка на случай совсем маленькой зоны, куда честный перебор не дотянулся за отведённые попытки —
   // тогда самые последние кадры плавно доводят шайбу внутрь; в обычной игре это не требуется
   if (bestD > 1) {
     const last = best[best.length - 1], gx = Math.max(gx0, Math.min(gx1, last.x)), gy = Math.max(gy0, Math.min(gy1, last.y));
     const tail = Math.min(20, best.length - 1), base = best.length - 1 - tail, bx = best[base].x, by = best[base].y;
-    for (let i = 1; i <= tail; i++) { const f = i / tail, e = 1 - Math.pow(1 - f, 3); best[base + i] = {x: bx + (gx - bx) * e, y: by + (gy - by) * e, b: false}; }
+    for (let i = 1; i <= tail; i++) { const f = i / tail, e = 1 - Math.pow(1 - f, 3); best[base + i] = {x: bx + (gx - bx) * e, y: by + (gy - by) * e, b: false, s: 0}; }
   }
-  H.path = best; H.pathStep = HDUR / (H.path.length - 1); H.lastIdx = 0;
-  H.trail = []; H.phase = 'play'; H.playT0 = now - elapsed;
+  H.path = best; H.pathStep = HDUR / (H.path.length - 1); H.lastIdx = 0; H.trail = [];
+  // шайба перед полётом крутится на месте и стрелкой «выбирает», куда полетит — острие останавливается
+  // ровно на том направлении, которым она дальше честно улетит
+  H.arrow0 = H.arrow; H.spinTotal = (((bestAng - H.arrow0) % TAU) + TAU) % TAU + TAU * 2.4; H.launchSpeed0 = bestSpd;
+  H.phase = 'play'; H.playT0 = now - elapsed;
 }
 function hockeyBanner(pay) {
   const total = pot(), fin = H.finals;
@@ -989,7 +993,15 @@ function payout() {
   hockeyBanner(pay);
 }
 function updatePuck(now) {
-  const k = Math.min(1, (now - H.playT0) / HDUR), idx = Math.min(H.path.length - 1, Math.floor((now - H.playT0) / H.pathStep));
+  const el = now - H.playT0;
+  if (el < HSPIN) {
+    const k = el / HSPIN, e = 1 - Math.pow(1 - k, 3), prevArrow = H.arrow;
+    H.arrow = H.arrow0 + H.spinTotal * e;
+    if (Math.floor(H.arrow / .55) > Math.floor(prevArrow / .55)) hap.sel();
+    H.puck = {x: H.W / 2, y: H.Hh / 2, b: false, s: 0}; H.trail = [];
+    return 0;
+  }
+  const el2 = el - HSPIN, k = Math.min(1, el2 / HDUR), idx = Math.min(H.path.length - 1, Math.floor(el2 / H.pathStep));
   if (idx > H.lastIdx) { for (let i = H.lastIdx + 1; i <= idx; i++) if (H.path[i].b) hap.hit(); H.lastIdx = idx; }
   H.puck = H.path[idx]; H.trail.push({x: H.puck.x, y: H.puck.y}); if (H.trail.length > 16) H.trail.shift();
   return k;
@@ -1012,24 +1024,52 @@ function hockeyFrame(now) {
   hockeyDraw(dt, now);
   H.raf = requestAnimationFrame(hockeyFrame);
 }
+function drawPuckArrow(c, x, y, ang, r) {
+  c.save(); c.translate(x, y); c.rotate(ang);
+  c.shadowColor = 'rgba(0,0,0,.5)'; c.shadowBlur = 4;
+  c.fillStyle = '#FFF1D0';
+  c.beginPath();
+  c.moveTo(r * 2.8, 0); c.lineTo(r * 1.3, -r); c.lineTo(r * 1.3, -r * .38); c.lineTo(-r * 1.5, -r * .38);
+  c.lineTo(-r * 1.5, r * .38); c.lineTo(r * 1.3, r * .38); c.lineTo(r * 1.3, r); c.closePath(); c.fill();
+  c.restore();
+}
 function hockeyDraw(dt, now) {
   const f = fitCanvas(hc); if (!f) return;
   const {x: c, w, h} = f; H.W = w; H.Hh = h;
   if (H.lw !== w || H.lh !== h) relayout();
+
+  // камера: когда шайба почти останавливается (или уже остановилась), плавно приближаемся к ней —
+  // так лучше видно, в чью зону она закатилась
+  const spinning = H.phase === 'play' && H.puck && !H.puck.s && (now - H.playT0) < HSPIN;
+  let want = 0;
+  if (H.phase === 'result') want = 1;
+  else if (H.phase === 'play' && H.puck && !spinning && H.launchSpeed0) want = Math.pow(Math.max(0, 1 - H.puck.s / H.launchSpeed0), 1.7);
+  H.camK += (want - H.camK) * (1 - Math.exp(-dt * (want > H.camK ? 3 : 4.2)));
+  let zs = 1, zcx = w / 2, zcy = h / 2;
+  if (H.camK > .003 && H.puck) {
+    const ZOOM = 2.15;
+    zs = 1 + (ZOOM - 1) * H.camK;
+    zcx = w / 2 + (H.puck.x - w / 2) * H.camK; zcy = h / 2 + (H.puck.y - h / 2) * H.camK;
+    zcx = Math.max(w / (2 * zs), Math.min(w - w / (2 * zs), zcx)); zcy = Math.max(h / (2 * zs), Math.min(h - h / (2 * zs), zcy));
+  }
+
   c.clearRect(0, 0, w, h);
+  c.save(); rr(c, 0, 0, w, h, 20); c.clip();
+  c.translate(w / 2, h / 2); c.scale(zs, zs); c.translate(-zcx, -zcy);
   c.fillStyle = '#120A05'; c.fillRect(0, 0, w, h);
   const kk = 1 - Math.exp(-dt * 9), dimOthers = H.phase === 'result';
   if (!H.entries.length) {
     c.setLineDash([8, 8]); c.strokeStyle = 'rgba(255,241,208,.35)'; c.lineWidth = 2; rr(c, 6, 6, w - 12, h - 12, 18); c.stroke(); c.setLineDash([]);
     c.fillStyle = '#C9A57C'; c.font = '600 15px Onest,system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('Игроки подключаются…', w / 2, h / 2 + 34);
   }
+  // зоны игроков вплотную друг к другу, без зазоров
   H.entries.forEach(e => {
     if (!e.t) return;
     const r = e.cur; r.x += (e.t.x - r.x) * kk; r.y += (e.t.y - r.y) * kk; r.w += (e.t.w - r.w) * kk; r.h += (e.t.h - r.h) * kk;
-    const g = 3, x = r.x + g, y = r.y + g, rw = r.w - g * 2, rh = r.h - g * 2;
-    if (rw < 4 || rh < 4) return;
-    rr(c, x, y, rw, rh, 14); c.fillStyle = e.color; c.fill();
-    const hl = c.createLinearGradient(0, y, 0, y + rh); hl.addColorStop(0, 'rgba(255,255,255,.16)'); hl.addColorStop(.5, 'rgba(255,255,255,0)'); c.fillStyle = hl; rr(c, x, y, rw, rh, 14); c.fill();
+    const x = r.x, y = r.y, rw = r.w, rh = r.h;
+    if (rw < 2 || rh < 2) return;
+    c.fillStyle = e.color; c.fillRect(x, y, rw, rh);
+    const hl = c.createLinearGradient(0, y, 0, y + rh); hl.addColorStop(0, 'rgba(255,255,255,.16)'); hl.addColorStop(.5, 'rgba(255,255,255,0)'); c.fillStyle = hl; c.fillRect(x, y, rw, rh);
     const fg = fgFor(e.color), d = Math.min(46, Math.min(rw, rh) * .46), cx = x + rw / 2, cy = y + rh / 2;
     const showTxt = rh > d + 44 && rw > 62, ay = showTxt ? cy - 10 : cy;
     if (d >= 18) {
@@ -1039,27 +1079,32 @@ function hockeyDraw(dt, now) {
       c.lineWidth = e.isMe ? 3 : 1.5; c.strokeStyle = e.isMe ? '#FFF1D0' : 'rgba(26,14,7,.4)'; c.beginPath(); c.arc(cx, ay, d / 2, 0, TAU); c.stroke();
     }
     if (showTxt) { c.fillStyle = fg; c.font = '700 14px Onest,system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(fmt(e.stake) + ' ' + T, cx, ay + d / 2 + 16); }
+    c.strokeStyle = 'rgba(26,14,7,.35)'; c.lineWidth = 1; c.strokeRect(x + .5, y + .5, rw - 1, rh - 1);
     const win = H.finals.includes(e);
-    if (dimOthers && !win) { c.fillStyle = 'rgba(18,10,5,.62)'; rr(c, x, y, rw, rh, 14); c.fill(); }
-    if (dimOthers && win) { c.lineWidth = 4; c.strokeStyle = '#FFF1D0'; rr(c, x, y, rw, rh, 14); c.stroke(); }
-    if (H.phase === 'play' && H.puck && H.mode === 'ffa' && H.puck.x >= r.x && H.puck.x <= r.x + r.w && H.puck.y >= r.y && H.puck.y <= r.y + r.h) { c.lineWidth = 3; c.strokeStyle = 'rgba(255,241,208,.9)'; rr(c, x, y, rw, rh, 14); c.stroke(); }
+    if (dimOthers && !win) { c.fillStyle = 'rgba(18,10,5,.62)'; c.fillRect(x, y, rw, rh); }
+    if (dimOthers && win) { c.lineWidth = 4; c.strokeStyle = '#FFF1D0'; c.strokeRect(x + 2, y + 2, rw - 4, rh - 4); }
+    if (H.phase === 'play' && H.puck && H.mode === 'ffa' && H.puck.x >= r.x && H.puck.x <= r.x + r.w && H.puck.y >= r.y && H.puck.y <= r.y + r.h) { c.lineWidth = 3; c.strokeStyle = 'rgba(255,241,208,.9)'; c.strokeRect(x + 1.5, y + 1.5, rw - 3, rh - 3); }
   });
   if (H.mode === 'team') Object.entries(H.blocks).forEach(([k, b]) => {
     const on = H.phase === 'play' && H.puck && H.puck.x >= b.x && H.puck.x <= b.x + b.w && H.puck.y >= b.y && H.puck.y <= b.y + b.h;
     const win = H.phase === 'result' && H.finals[0] && H.finals[0].team === k;
-    if (on || win) { c.lineWidth = 4; c.strokeStyle = win ? '#FFF1D0' : 'rgba(255,241,208,.75)'; rr(c, b.x + 1.5, b.y + 1.5, b.w - 3, b.h - 3, 16); c.stroke(); }
+    if (on || win) { c.lineWidth = 4; c.strokeStyle = win ? '#FFF1D0' : 'rgba(255,241,208,.75)'; c.strokeRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4); }
   });
-  // рамка площадки
-  c.lineWidth = 3; c.strokeStyle = 'rgba(255,241,208,.5)'; rr(c, 1.5, 1.5, w - 3, h - 3, 20); c.stroke();
-  // шайба
+  // шайба и, пока она крутится перед стартом, стрелка направления
   const pr = Math.min(w, h) * PUCK_R;
-  let px = w / 2, py = h / 2 + (H.entries.length ? 0 : 0);
+  let px = w / 2, py = h / 2;
   if (H.puck) { px = H.puck.x; py = H.puck.y; }
   else if (H.phase === 'lobby') { py = h / 2 + Math.sin(now / 350) * 3; }
   if (H.trail.length > 1) { H.trail.forEach((p, i) => { c.globalAlpha = i / H.trail.length * .5; c.fillStyle = '#FFF1D0'; c.beginPath(); c.arc(p.x, p.y, pr * (.4 + .5 * i / H.trail.length), 0, TAU); c.fill(); }); c.globalAlpha = 1; }
+  if (spinning) { c.save(); c.globalAlpha = .18; c.strokeStyle = '#FFF1D0'; c.lineWidth = pr * .6; c.beginPath(); c.arc(px, py, pr * 2.3, 0, TAU); c.stroke(); c.restore(); }
   c.save(); c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 8; c.fillStyle = '#1A0E07'; c.beginPath(); c.arc(px, py, pr, 0, TAU); c.fill(); c.restore();
   c.lineWidth = 2.4; c.strokeStyle = '#FFF1D0'; c.beginPath(); c.arc(px, py, pr, 0, TAU); c.stroke();
   c.fillStyle = 'rgba(255,241,208,.35)'; c.beginPath(); c.ellipse(px - pr * .25, py - pr * .35, pr * .4, pr * .18, -.4, 0, TAU); c.fill();
+  if (spinning) drawPuckArrow(c, px, py, H.arrow, pr);
+  c.restore();
+
+  // рамка площадки — рисуется уже поверх приближения, в экранных координатах, чтобы не «уезжать» с камерой
+  c.lineWidth = 3; c.strokeStyle = 'rgba(255,241,208,.5)'; rr(c, 1.5, 1.5, w - 3, h - 3, 20); c.stroke();
 }
 function renderHPlayers() {
   const ul = $('#hplayers'); ul.textContent = '';
